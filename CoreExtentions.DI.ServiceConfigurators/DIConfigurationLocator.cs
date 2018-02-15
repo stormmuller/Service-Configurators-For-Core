@@ -9,7 +9,7 @@
 
     public static class DIConfigurationLocator
     {
-        private const string ConfiguratorClassConventionSuffix = "Installer";
+        private const string ConfiguratorClassConventionSuffix = "Configurator";
         private const string ConfigureMethodName = "Configure";
 
         public static void InstallConfigurators(this IServiceCollection services, IEnumerable<Assembly> assemblies, Predicate<Type> typeMatch)
@@ -25,9 +25,21 @@
             }
         }
         
-        public static void InstallConfigurators(this IServiceCollection services, Predicate<Assembly> assemblyMatch, Predicate<Type> typeMatch)
+        public static void InstallConfigurators(this IServiceCollection services, Predicate<AssemblyName> assemblyMatch, Predicate<Type> typeMatch, Assembly rootAssembly = null)
         {
-            var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => assemblyMatch(a));
+            if (rootAssembly == null)
+            {
+                rootAssembly = Assembly.GetCallingAssembly();
+            }
+
+            var assemblyNames = rootAssembly.GetReferencedAssemblies().Where(a => assemblyMatch(a));
+
+            var assemblies = new List<Assembly>();
+
+            foreach (var assemblyName in assemblyNames)
+            {
+                assemblies.Add(Assembly.Load(assemblyName));
+            }
 
             if (assemblies.Count() < 1)
             {
@@ -44,11 +56,16 @@
             services.InstallConfigurators(assemblies, typeMatch);
         }
 
-        public static void InstallConfigurators(this IServiceCollection services, Predicate<Assembly> assemblyMatch)
+        public static void InstallConfigurators(this IServiceCollection services, Predicate<AssemblyName> assemblyMatch, Assembly rootAssembly = null)
         {
+            if (rootAssembly == null)
+            {
+                rootAssembly = Assembly.GetCallingAssembly();
+            }
+
             Predicate<Type> typeMatch = (Type t) => t.Name.EndsWith(ConfiguratorClassConventionSuffix);
 
-            services.InstallConfigurators(assemblyMatch, typeMatch);
+            services.InstallConfigurators(assemblyMatch, typeMatch, rootAssembly);
         }
 
         static void LoadConfigurator(Type type, IServiceCollection services)

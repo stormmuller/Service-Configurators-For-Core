@@ -2,6 +2,19 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Version>0.0.1</Version>
+    <Authors>Storm Muller</Authors>
+    <Company />
+    <Product />
+    <Description>A simple library that allows you to seperate your ASP.NET Core dependancy registrations. The registrations are still in the form of extention methods, thus conforming to the .net core convention. registrations can be loaded per assembly and by convention.</Description>
+    <RepositoryUrl>https://github.com/stormmuller/Service-Configurators-For-Core</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
+    <PackageTags>Dependancy Injection, ASP.NET Core, Convention Based Registration, Installer</PackageTags>
+    <AssemblyVersion>0.0.0.1</AssemblyVersion>
+    <FileVersion>0.0.0.1</FileVersion>
+    <PackageReleaseNotes>Added assembly name resolution, and service extention method calling by convention and by predicate</PackageReleaseNotes>
+    <NeutralLanguage>en</NeutralLanguage>
   </PropertyGroup>
 
   <ItemGroup>
