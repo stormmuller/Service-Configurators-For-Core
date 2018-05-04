@@ -2,6 +2,7 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.IO;
     using System.Linq;
     using System.Reflection;
     using CoreExtentions.DI.ServiceConfigurators.Exceptions;
@@ -12,7 +13,7 @@
         private const string ConfiguratorClassConventionSuffix = "Configurator";
         private const string ConfigureMethodName = "Configure";
 
-        public static void InstallConfigurators(this IServiceCollection services, IEnumerable<Assembly> assemblies, Predicate<Type> typeMatch)
+        public static IServiceCollection InstallConfigurators(this IServiceCollection serviceCollection, IEnumerable<Assembly> assemblies, Predicate<Type> typeMatch)
         {
             foreach (var assembly in assemblies)
             {
@@ -20,43 +21,64 @@
 
                 foreach (var installerType in types)
                 {
-                    LoadConfigurator(installerType, services);
+                    LoadConfigurator(installerType, serviceCollection);
                 }
             }
+
+            return serviceCollection;
         }
-        
-        public static void InstallConfigurators(this IServiceCollection services, Predicate<AssemblyName> assemblyMatch, Predicate<Type> typeMatch, Assembly rootAssembly = null)
+
+        public static IServiceCollection InstallConfigurators(this IServiceCollection serviceCollection, Predicate<AssemblyName> assemblyMatch, Predicate<Type> typeMatch, Assembly rootAssembly = null)
         {
             if (rootAssembly == null)
             {
                 rootAssembly = Assembly.GetCallingAssembly();
             }
 
-            var assemblyNames = rootAssembly.GetReferencedAssemblies().Where(a => assemblyMatch(a));
+            var assemblies = new HashSet<Assembly> { rootAssembly };
 
-            var assemblies = new List<Assembly>();
-
-            foreach (var assemblyName in assemblyNames)
-            {
-                assemblies.Add(Assembly.Load(assemblyName));
-            }
+            AddReferencedAssemblyTree(rootAssembly, assemblyMatch, assemblies);
 
             if (assemblies.Count() < 1)
             {
                 throw new ConfiguratorException("There were no assemblies found that match the predicate provided.");
             }
 
-            services.InstallConfigurators(assemblies, typeMatch);
+            serviceCollection.InstallConfigurators(assemblies, typeMatch);
+
+            return serviceCollection;
         }
 
-        public static void InstallConfigurators(this IServiceCollection services, IEnumerable<Assembly> assemblies)
+        private static void AddReferencedAssemblyTree(Assembly parentAssembly, Predicate<AssemblyName> assemblyMatch, HashSet<Assembly> assemblies)
+        {
+            var newlyDiscoveredAssemblies = new List<Assembly>();
+
+            var newlyDiscoveredAssemblyNames = parentAssembly.GetReferencedAssemblies().Where(a => assemblyMatch(a));
+
+            foreach (var assemblyName in newlyDiscoveredAssemblyNames)
+            {
+                var assembly = Assembly.Load(assemblyName);
+
+                newlyDiscoveredAssemblies.Add(assembly);
+                assemblies.Add(assembly);
+            }
+
+            foreach (var assembly in newlyDiscoveredAssemblies)
+            {
+                AddReferencedAssemblyTree(assembly, assemblyMatch, assemblies);
+            }
+        }
+
+        public static IServiceCollection InstallConfigurators(this IServiceCollection serviceCollection, IEnumerable<Assembly> assemblies)
         {
             Predicate<Type> typeMatch = (Type t) => t.Name.EndsWith(ConfiguratorClassConventionSuffix);
 
-            services.InstallConfigurators(assemblies, typeMatch);
+            serviceCollection.InstallConfigurators(assemblies, typeMatch);
+
+            return serviceCollection;
         }
 
-        public static void InstallConfigurators(this IServiceCollection services, Predicate<AssemblyName> assemblyMatch, Assembly rootAssembly = null)
+        public static IServiceCollection InstallConfigurators(this IServiceCollection serviceCollection, Predicate<AssemblyName> assemblyMatch, Assembly rootAssembly = null)
         {
             if (rootAssembly == null)
             {
@@ -65,10 +87,43 @@
 
             Predicate<Type> typeMatch = (Type t) => t.Name.EndsWith(ConfiguratorClassConventionSuffix);
 
-            services.InstallConfigurators(assemblyMatch, typeMatch, rootAssembly);
+            serviceCollection.InstallConfigurators(assemblyMatch, typeMatch, rootAssembly);
+
+            return serviceCollection;
         }
 
-        static void LoadConfigurator(Type type, IServiceCollection services)
+        public static IServiceCollection InstallConfiguratorsInApplicationPath(this IServiceCollection serviceCollection, Predicate<AssemblyName> assemblyMatch, Predicate<Type> typeMatch)
+        {
+             var assemblies = new HashSet<Assembly>();
+             
+             var allDlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "*.dll", SearchOption.AllDirectories);
+             
+             foreach (string dll in allDlls)
+             {
+                 try
+                 {
+                     var loadedAssembly = Assembly.LoadFile(dll);
+                     assemblies.Add(loadedAssembly);
+                 }
+                 catch (BadImageFormatException) { }
+             }
+
+            assemblies.RemoveWhere(a => !assemblyMatch(a.GetName()));
+
+            serviceCollection.InstallConfigurators(assemblies, typeMatch);
+
+            return serviceCollection;
+        }
+
+        public static IServiceCollection InstallConfiguratorsInApplicationPath(this IServiceCollection serviceCollection, Predicate<AssemblyName> assemblyMatch)
+        {
+            Predicate<Type> typeMatch = (Type t) => t.Name.EndsWith(ConfiguratorClassConventionSuffix);
+            InstallConfiguratorsInApplicationPath(serviceCollection, assemblyMatch, typeMatch);
+
+            return serviceCollection;
+        }
+
+        static IServiceCollection LoadConfigurator(Type type, IServiceCollection serviceCollection)
         {
             var configuratorMethods = type
                             .GetMethods(BindingFlags.Static | BindingFlags.Public)
@@ -88,7 +143,9 @@
 
             var configuratorMethod = configuratorMethods.First();
 
-            configuratorMethod.Invoke(null, new object[] { services });
+            configuratorMethod.Invoke(null, new object[] { serviceCollection });
+
+            return serviceCollection;
         }
     }
 }
